@@ -1,43 +1,23 @@
 ---
-allowed-tools: Bash(kubectl config current-context:*), Bash(kubectl config get-contexts:*)
-description: Show cloud-guardian protection status and current cluster context
+allowed-tools: Bash(cloud-guardian status:*), Bash(cloud-guardian whitelist list:*)
+description: Show cloud-guardian protection status for the current cluster
 ---
 
 ## Context
 
-- Current kubectl context: !`kubectl config current-context 2>/dev/null || echo "kubectl not configured"`
-- Available contexts: !`kubectl config get-contexts --no-headers 2>/dev/null | awk '{print $1, $2, $3}' | head -20 || echo "N/A"`
+- Guardian status: !`cloud-guardian status`
+- Whitelist: !`cloud-guardian whitelist list`
 
 ## Your task
 
-Based on the current context above, display a cloud-guardian status report:
+Display a clear status report based on the above output. Include:
 
-**1. Context Status**
-- Show the active context name
-- Label it as: `QA4 (Semi-Protected)` if it's `qa4-mantle-eks` or `mantle-eks`, otherwise `PRODUCTION (Fully Protected)`
+1. **Current context** and its protection level (Fully Protected or Semi-Protected)
+2. **What is blocked** at each tier
+3. **How to proceed** if a command gets blocked:
+   - Claude will show the blocked command and hash
+   - User must explicitly say YES to confirm
+   - Claude then runs `cloud-guardian-approve <hash>`
+   - Claude retries the original command
 
-**2. Active Protections**
-
-If PRODUCTION context:
-- ALL kubectl commands: BLOCKED
-- ALL helm commands: BLOCKED
-- AWS EC2 terminate-instances: BLOCKED
-- AWS S3 rm / rb: BLOCKED
-- AWS IAM delete-*: BLOCKED
-- AWS CloudFormation delete-stack: BLOCKED
-- eksctl delete nodegroup/addon: BLOCKED
-- (+ everything in Always Blocked below)
-
-Always Blocked (even on QA4):
-- kubectl delete pvc / namespace / --all: BLOCKED
-- eksctl delete cluster: BLOCKED
-- aws rds delete-db-instance / delete-db-cluster: BLOCKED
-- aws eks delete-cluster: BLOCKED
-- terraform destroy: BLOCKED
-
-**3. What is Allowed on QA4**
-- kubectl get/describe/logs/exec/apply/rollout
-- helm list/status/get/upgrade/install
-- AWS read-only operations
-
-Show as a concise status card. Do not call any other tools.
+Keep it concise. Do not run any other tools.

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# cloud-guardian-approve: create a one-time approval token for a blocked command.
+#
+# Usage: cloud-guardian-approve <command-hash>
+#
+# The hash is printed in the cloud-guardian block message.
+# After running this, Claude must retry the original command immediately.
+# Tokens are valid for 5 minutes and consumed on first use.
+
+set -euo pipefail
+
+HASH="${1:-}"
+if [[ -z "$HASH" ]]; then
+  echo "Usage: cloud-guardian-approve <command-hash>" >&2
+  echo "The hash is shown in the cloud-guardian block message." >&2
+  exit 1
+fi
+
+# Validate hash format (16 hex chars)
+if ! echo "$HASH" | grep -qE '^[0-9a-f]{16}$'; then
+  echo "Error: invalid hash format. Expected 16 hex characters." >&2
+  exit 1
+fi
+
+TOKEN_DIR="${CLOUD_GUARDIAN_TOKEN_DIR:-$HOME/.config/cloud-guardian/tokens}"
+mkdir -p "$TOKEN_DIR"
+
+# Token expires in 5 minutes
+EXPIRY=$(( $(date +%s) + 300 ))
+echo "$EXPIRY" > "$TOKEN_DIR/$HASH"
+
+echo "✅ [cloud-guardian] Approval token created"
+echo "   Hash    : $HASH"
+echo "   Expires : $(date -d "@$EXPIRY" 2>/dev/null || date -r "$EXPIRY" 2>/dev/null || echo "in 5 minutes")"
+echo "   Use     : one-time, consumed on first retry"

@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# cloud-guardian: management CLI
+#
+# Usage:
+#   cloud-guardian status
+#   cloud-guardian whitelist list
+#   cloud-guardian whitelist add <context>      # requires interactive confirmation
+#   cloud-guardian whitelist remove <context>
+
+set -euo pipefail
+
+CONFIG_FILE="${CLOUD_GUARDIAN_CONFIG:-$HOME/.config/cloud-guardian/config.json}"
+
+_ensure_config() {
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo '{"whitelistedClusters":[]}' > "$CONFIG_FILE"
+  fi
+}
+
+_current_context() {
+  kubectl config current-context 2>/dev/null || echo "unknown"
+}
+
+_is_whitelisted() {
+  local ctx="$1"
+  [[ -f "$CONFIG_FILE" ]] || return 1
+  jq -e --arg ctx "$ctx" \
+    '(.whitelistedClusters // []) | index($ctx) != null' \
+    "$CONFIG_FILE" > /dev/null 2>&1
+}
+
+cmd="${1:-help}"
+
+case "$cmd" in
+  status)
+    ctx=$(_current_context)
+    echo "cloud-guardian status"
+    echo "─────────────────────────────────────────"
+    echo "Current context : $ctx"
+    if _is_whitelisted "$ctx"; then
+      echo "Protection level: Semi-protected (whitelisted)"
+      echo ""
+      echo "Tier 1 (ALWAYS blocked — even on whitelist):"
+      echo "  kubectl delete pvc / namespace / --all"
+      echo "  eksctl delete cluster"
+      echo "  aws rds delete-db-instance / delete-db-cluster"
+      echo "  aws eks delete-cluster"
+      echo "  aws s3 rb / s3api delete-bucket"
+      echo "  terraform destroy"
+      echo ""
+      echo "Tier 2: ALLOWED (cluster is whitelisted)"
+    else
+      echo "Protection level: Fully protected (not whitelisted)"
+      echo ""
+      echo "Tier 1 + Tier 2: ALL blocked, ALL require confirmation"
+    fi
+    ;;
+
+  whitelist)
+    subcmd="${2:-list}"
+    case "$subcmd" in
+      list)
+        if [[ ! -f "$CONFIG_FILE" ]]; then
+          echo "No config found. No clusters are whitelisted."
+          echo "Config path: $CONFIG_FILE"
+        else
+          echo "Whitelisted clusters (Tier 2 relaxed, Tier 1 still requires confirmation):"
+          count=$(jq -r '.whitelistedClusters // [] | length' "$CONFIG_FILE")
+          if [[ "$count" -eq 0 ]]; then
+            echo "  (none)"
+          else
+            jq -r '.whitelistedClusters // [] | .[]' "$CONFIG_FILE" | sed 's/^/  - /'
+          fi
+        fi
+        ;;
+
+      add)
+        ctx="${3:-}"
+        if [[ -z "$ctx" ]]; then
+          echo "Usage: cloud-guardian whitelist add <context>" >&2
+          echo ""
+          echo "Available contexts:"
+          kubectl config get-contexts --no-headers 2>/dev/null | awk '{print "  " $1}' || true
+          exit 1
+        fi
+
+        if _is_whitelisted "$ctx"; then
+          echo "Context '$ctx' is already whitelisted."
+          exit 0
+        fi
+
+        echo ""
+        echo "⚠️  WARNING: You are about to whitelist cluster context:"
+        echo "   $ctx"
+        echo ""
+        echo "   Whitelisted clusters have relaxed Tier 2 protections:"
+        echo "   kubectl, helm, and most AWS operations will be ALLOWED without confirmation."
+        echo ""
+        echo "   Tier 1 (irreversible ops) will STILL require confirmation."
+        echo ""
+        echo "   Only whitelist dev/test clusters, never production."
+        echo ""
+        printf "Type YES to confirm: "
+        read -r answer
+        if [[ "$answer" != "YES" ]]; then
+          echo "Cancelled. Cluster not added to whitelist."
+          exit 1
+        fi
+
+        _ensure_config
+        jq --arg ctx "$ctx" \
+          '.whitelistedClusters += [$ctx] | .whitelistedClusters |= unique' \
+          "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+        echo "✅ Added '$ctx' to whitelist: $CONFIG_FILE"
+        ;;
+
+      remove)
+        ctx="${3:-}"
+        if [[ -z "$ctx" ]]; then
+          echo "Usage: cloud-guardian whitelist remove <context>" >&2; exit 1
+        fi
+        _ensure_config
+        jq --arg ctx "$ctx" '.whitelistedClusters -= [$ctx]' \
+          "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+        echo "✅ Removed '$ctx' from whitelist"
+        ;;
+
+      *)
+        echo "Usage: cloud-guardian whitelist [list|add|remove]" >&2; exit 1
+        ;;
+    esac
+    ;;
+
+  help|--help|-h)
+    cat << 'HELP'
+cloud-guardian — management CLI
+
+Commands:
+  status                           Show protection level for current context
+  whitelist list                   List whitelisted clusters
+  whitelist add <context>          Add cluster to whitelist (requires confirmation)
+  whitelist remove <context>       Remove cluster from whitelist
+
+Config file: ~/.config/cloud-guardian/config.json
+HELP
+    ;;
+
+  *)
+    echo "Unknown command: $cmd" >&2
+    echo "Run: cloud-guardian help" >&2
+    exit 1
+    ;;
+esac

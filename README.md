@@ -2,46 +2,75 @@
 
 A Claude Code plugin that prevents destructive operations on AWS, EKS, and Kubernetes clusters.
 
-## What it does
+**No cluster is trusted by default. All dangerous operations require explicit user confirmation.**
 
-Intercepts Bash commands via `PreToolUse` hook and blocks:
+## How it works
 
-### Tier 1 — Always blocked (even on QA4)
+1. Claude attempts a destructive command
+2. The `PreToolUse` hook intercepts it and **blocks** with a hash
+3. Claude shows the user exactly what was blocked and asks: **"Confirm? Type YES."**
+4. User says YES → Claude runs `cloud-guardian-approve <hash>`
+5. Claude retries → hook finds the token → **allows once** → token consumed
 
-These operations are irreversible and require explicit user confirmation:
+No bypass. No auto-approval. The token is one-time and expires in 5 minutes.
 
-| Command Pattern | Reason |
+## Protection tiers
+
+### Tier 1 — Always requires confirmation (all clusters, including whitelisted)
+
+| Command pattern | Risk |
 |---|---|
 | `kubectl delete pvc / namespace / --all` | Permanent data loss |
 | `eksctl delete cluster` | Destroys entire EKS cluster |
 | `aws rds delete-db-instance / delete-db-cluster` | Database deletion |
-| `aws eks delete-cluster` | EKS cluster deletion via CLI |
-| `aws s3 rb / s3api delete-bucket` | Bucket deletion |
+| `aws eks delete-cluster` | EKS cluster removal via CLI |
+| `aws s3 rb` / `s3api delete-bucket` | S3 bucket deletion |
 | `terraform destroy` | Full environment teardown |
 
-### Tier 2 — Blocked on non-QA4 clusters
+### Tier 2 — Requires confirmation on non-whitelisted clusters
 
-On production clusters, Claude cannot autonomously execute:
-- All `kubectl` commands
-- All `helm` commands
-- `aws ec2 terminate-instances`
-- `aws s3 rm` / `aws s3 sync --delete`
-- `aws iam delete-*`
-- `aws cloudformation delete-stack`
-- `aws lambda delete-function`
-- `eksctl delete nodegroup / addon`
+| Command pattern | Why blocked |
+|---|---|
+| All `kubectl` and `helm` commands | Unknown cluster = treat as production |
+| `aws ec2 terminate-instances` | Instance termination |
+| `aws s3 rm` / `s3 sync --delete` | Object deletion |
+| `aws iam delete-*` | IAM resource deletion |
+| `aws cloudformation delete-stack` | Stack teardown |
+| `aws lambda delete-function` | Function deletion |
+| `aws ec2 delete-*` | EC2 resource deletion |
+| `eksctl delete nodegroup / addon` | Node group removal |
 
-### QA4 clusters (semi-protected)
+## Whitelist
 
-Contexts `qa4-mantle-eks` and `mantle-eks` allow normal operations but still enforce Tier 1 blocks.
+Whitelisted clusters are trusted for Tier 2 operations but **Tier 1 always requires confirmation**.
+
+```bash
+# Add a dev/test cluster to whitelist (requires interactive confirmation)
+cloud-guardian whitelist add my-dev-cluster
+
+# List whitelisted clusters
+cloud-guardian whitelist list
+
+# Remove
+cloud-guardian whitelist remove my-dev-cluster
+```
+
+Config stored at: `~/.config/cloud-guardian/config.json`
+
+```json
+{
+  "whitelistedClusters": ["my-dev-cluster"]
+}
+```
 
 ## Skills
 
 - `/guardian-status` — Show current context and active protection level
+- `/guardian-approve` — Walk through confirmation flow for a blocked operation
 
 ## Installation
 
-### Option 1: Install as plugin (after publishing to GitHub)
+### From GitHub (as Claude Code plugin)
 
 Add to `~/.claude/settings.json`:
 
@@ -51,7 +80,7 @@ Add to `~/.claude/settings.json`:
     "cloud-guardian": {
       "source": {
         "source": "github",
-        "repo": "YOUR_GITHUB_USERNAME/cloud-guardian"
+        "repo": "YOUR_USERNAME/cloud-guardian"
       }
     }
   },
@@ -61,7 +90,7 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-Then add the hook (pointing to the installed plugin cache):
+After plugin cache is downloaded, add the hook (path varies by version):
 
 ```json
 {
@@ -70,7 +99,7 @@ Then add the hook (pointing to the installed plugin cache):
       "matcher": "Bash",
       "hooks": [{
         "type": "command",
-        "command": "bash ~/.claude/plugins/cache/cloud-guardian/cloud-guardian/hooks/check-destructive.sh",
+        "command": "bash ~/.claude/plugins/cache/cloud-guardian/cloud-guardian/<version>/hooks/check-destructive.sh",
         "timeout": 5
       }]
     }]
@@ -78,31 +107,19 @@ Then add the hook (pointing to the installed plugin cache):
 }
 ```
 
-### Option 2: Direct hook (local development)
-
-Copy `hooks/check-destructive.sh` to `~/.claude/hooks/cloud-guardian.sh` and add to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [{
-      "matcher": "Bash",
-      "hooks": [{
-        "type": "command",
-        "command": "bash ~/.claude/hooks/cloud-guardian.sh",
-        "timeout": 5
-      }]
-    }]
-  }
-}
-```
-
-## Configuration
-
-To customize QA4 contexts, edit `hooks/check-destructive.sh`:
+### From source (local)
 
 ```bash
-is_qa4() {
-  [[ "$KUBECTL_CONTEXT" == "qa4-mantle-eks" || "$KUBECTL_CONTEXT" == "mantle-eks" ]]
-}
+git clone https://github.com/YOUR_USERNAME/cloud-guardian
+cd cloud-guardian
+bash setup/install.sh
 ```
+
+The install script copies binaries to `~/.local/bin/` and prints the exact hook config to add to `~/.claude/settings.json`.
+
+## Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `CLOUD_GUARDIAN_CONFIG` | `~/.config/cloud-guardian/config.json` | Config file path |
+| `CLOUD_GUARDIAN_TOKEN_DIR` | `~/.config/cloud-guardian/tokens` | Approval token directory |
