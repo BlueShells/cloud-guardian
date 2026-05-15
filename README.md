@@ -117,6 +117,30 @@ bash setup/install.sh
 
 The install script copies binaries to `~/.local/bin/` and prints the exact hook config to add to `~/.claude/settings.json`.
 
+## Security hardening
+
+### Protection against `--dangerously-skip-permissions`
+
+By default, `--dangerously-skip-permissions` bypasses Claude Code's interactive permission prompts. cloud-guardian defends against this at two levels:
+
+**Level 1 — Hook `permissionDecision: "deny"`** (built-in to this plugin)
+
+The `block()` function in the hook uses the PreToolUse-specific `permissionDecision: "deny"` field, which is enforced by the hook system independently of the global permission mode. This means destructive commands are blocked even when permissions are bypassed.
+
+**Level 2 — Disable bypass mode entirely** (recommended for production teams)
+
+Add this to `.claude/settings.json` (project-level, committed to the repo) to completely prevent `--dangerously-skip-permissions` from being activated:
+
+```json
+{
+  "permissions": {
+    "disableBypassPermissionsMode": "disable"
+  }
+}
+```
+
+With this setting, anyone who tries to run `claude --dangerously-skip-permissions` will be rejected at startup. Combine with Level 1 for defense in depth.
+
 ## Environment variables
 
 | Variable | Default | Description |

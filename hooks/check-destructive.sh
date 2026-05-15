@@ -32,7 +32,9 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || tr
 CMD_HASH=$(printf '%s' "$COMMAND" | sha256sum 2>/dev/null | cut -c1-16 \
            || printf '%s' "$COMMAND" | shasum -a 256 | cut -c1-16)
 
-# Emit a blocking JSON response with approval instructions
+# Emit a blocking JSON response with approval instructions.
+# Uses permissionDecision:"deny" (PreToolUse-specific) so the block takes effect
+# even when Claude Code is running with --dangerously-skip-permissions.
 block() {
   local tier="$1"
   local note="${2:-}"
@@ -44,6 +46,11 @@ block() {
     --arg note   "$note" \
     '{
       "continue": false,
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": ("[cloud-guardian] \($tier) | ctx=\($ctx) | run `cloud-guardian-approve \($hash)` after user confirms")
+      },
       "stopReason": (
         "🚨 [cloud-guardian] \($tier)\n" +
         "  Context : \($ctx)\n" +
