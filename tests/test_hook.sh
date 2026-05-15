@@ -124,6 +124,51 @@ expect_block  "kubectl delete pvc — whitelisted cluster" \
 
 # ── Tier 2: non-whitelisted cluster ──────────────────────────────────────────
 echo ""
+echo "── Local filesystem high-risk deletion ─────────────────────────────────"
+
+expect_block  "rm -rf / (root)" \
+  '{"tool_input":{"command":"rm -rf /"}}'
+
+expect_block  "rm -rf /var/data (absolute path)" \
+  '{"tool_input":{"command":"rm -rf /var/data"}}'
+
+expect_block  "rm -rf ~ (home)" \
+  '{"tool_input":{"command":"rm -rf ~"}}'
+
+expect_block  "rm -rf ~/documents" \
+  '{"tool_input":{"command":"rm -rf ~/documents"}}'
+
+expect_block  "rm -rf \$HOME" \
+  '{"tool_input":{"command":"rm -rf $HOME/.config"}}'
+
+expect_block  "rm --recursive /etc" \
+  '{"tool_input":{"command":"rm --recursive /etc/nginx"}}'
+
+expect_block  "rm -fr /opt/app (flags reversed)" \
+  '{"tool_input":{"command":"rm -fr /opt/app"}}'
+
+expect_block  "find /data -delete" \
+  '{"tool_input":{"command":"find /data -name \"*.log\" -delete"}}'
+
+expect_block  "find -exec rm" \
+  '{"tool_input":{"command":"find . -exec rm -rf {} +"}}'
+
+expect_block  "shred secret.key" \
+  '{"tool_input":{"command":"shred -u secret.key"}}'
+
+expect_allow  "rm -rf ./build (relative path)" \
+  '{"tool_input":{"command":"rm -rf ./build"}}'
+
+expect_allow  "rm -rf build/ (relative path)" \
+  '{"tool_input":{"command":"rm -rf build/"}}'
+
+expect_allow  "rm file.txt (no recursive)" \
+  '{"tool_input":{"command":"rm file.txt"}}'
+
+expect_allow  "rm -f /tmp/tmpfile (safe tmp)" \
+  '{"tool_input":{"command":"rm -f /tmp/tmpfile.txt"}}'
+
+echo ""
 echo "── Tier 2 (non-whitelisted cluster) ────────────────────────────────────"
 
 expect_block  "kubectl get pods — non-whitelisted" \

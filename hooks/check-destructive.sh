@@ -115,6 +115,17 @@ TIER1_PATTERNS=(
   'aws[[:space:]]s3[[:space:]]sync.*--delete'
   # Terraform — full environment teardown
   'terraform[[:space:]]destroy\b'
+  # ── Local filesystem: high-risk deletion ───────────────────────────────────
+  # rm with recursive flag (-r / -R / --recursive) targeting absolute paths,
+  # home directory (~), or $HOME. Relative-path removals (rm -rf ./build) are
+  # intentionally NOT blocked — only absolute/home targets are high-risk.
+  'rm[[:space:]].*(--recursive|-[a-zA-Z]*[rR][a-zA-Z]*).*[[:space:]](/|~|\$\{?HOME)'
+  # find with bulk-delete action — require command position to avoid matching
+  # text descriptions inside commit messages, comments, or heredocs
+  '(^|[[:space:]]*[;&|(`][[:space:]]*)find[[:space:]].*-delete\b'
+  '(^|[[:space:]]*[;&|(`][[:space:]]*)find[[:space:]].*-exec[[:space:]].*\brm\b'
+  # secure overwrite — same command-position requirement
+  '(^|[[:space:]]*[;&|(`][[:space:]]*)shred[[:space:]]'
 )
 
 for pattern in "${TIER1_PATTERNS[@]}"; do
