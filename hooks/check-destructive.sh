@@ -103,15 +103,16 @@ TIER1_PATTERNS=(
   'kubectl[[:space:]].*delete.*\B-A\b'
   # eksctl — cluster teardown
   'eksctl[[:space:]]delete[[:space:]]cluster\b'
-  # AWS RDS — database deletion
-  'aws[[:space:]]rds[[:space:]]delete-db-instance\b'
-  'aws[[:space:]]rds[[:space:]]delete-db-cluster\b'
-  'aws[[:space:]]rds[[:space:]]delete-global-cluster\b'
-  # AWS EKS — cluster deletion via CLI
-  'aws[[:space:]]eks[[:space:]]delete-cluster\b'
-  # AWS S3 — bucket removal
+  # AWS — ANY service deletion/termination/removal.
+  # Covers all services (IAM, EC2, RDS, EKS, DynamoDB, ElastiCache, SNS, SQS,
+  # Route53, KMS, Secrets Manager, ECR, ECS, CloudFormation, Lambda, etc.)
+  # deliberately NOT limited to specific services to avoid enumeration gaps.
+  # k8s cluster whitelist does NOT exempt AWS operations.
+  'aws[[:space:]]+[[:alnum:]-]+[[:space:]]+(delete|terminate|remove)-'
+  # AWS S3 special-case commands (don't use delete-*/terminate-* form)
+  'aws[[:space:]]s3[[:space:]]rm\b'
   'aws[[:space:]]s3[[:space:]]rb\b'
-  'aws[[:space:]]s3api[[:space:]]delete-bucket\b'
+  'aws[[:space:]]s3[[:space:]]sync.*--delete'
   # Terraform — full environment teardown
   'terraform[[:space:]]destroy\b'
 )
@@ -128,24 +129,13 @@ done
 
 if ! is_whitelisted; then
   TIER2_PATTERNS=(
-    # All kubectl and helm (on unrecognised clusters)
+    # All kubectl and helm on non-whitelisted clusters
     '(^|[[:space:];&|`])(kubectl|helm)[[:space:]]'
-    # AWS EC2
-    'aws[[:space:]]ec2[[:space:]]terminate-instances\b'
-    # AWS S3 content deletion
-    'aws[[:space:]]s3[[:space:]]rm\b'
-    'aws[[:space:]]s3[[:space:]]sync.*--delete\b'
-    # AWS IAM
-    'aws[[:space:]]iam[[:space:]]delete-'
-    # AWS CloudFormation
-    'aws[[:space:]]cloudformation[[:space:]]delete-stack\b'
-    # AWS Lambda
-    'aws[[:space:]]lambda[[:space:]]delete-function\b'
-    # AWS EC2 resource deletion
-    'aws[[:space:]]ec2[[:space:]]delete-'
-    # eksctl nodegroup/addon
+    # eksctl sub-cluster operations (cluster deletion is Tier 1)
     'eksctl[[:space:]]delete[[:space:]]nodegroup\b'
     'eksctl[[:space:]]delete[[:space:]]addon\b'
+    # Note: all AWS delete/terminate/remove commands are already caught by Tier 1
+    # and do NOT depend on whitelist status.
   )
 
   for pattern in "${TIER2_PATTERNS[@]}"; do

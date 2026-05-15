@@ -81,6 +81,42 @@ expect_block  "aws rds delete-db-instance" \
 expect_block  "aws s3 rb (bucket removal)" \
   '{"tool_input":{"command":"aws s3 rb s3://prod-bucket --force"}}'
 
+expect_block  "aws iam delete-user" \
+  '{"tool_input":{"command":"aws iam delete-user --user-name alice"}}'
+
+expect_block  "aws iam delete-role" \
+  '{"tool_input":{"command":"aws iam delete-role --role-name my-role"}}'
+
+expect_block  "aws dynamodb delete-table" \
+  '{"tool_input":{"command":"aws dynamodb delete-table --table-name orders"}}'
+
+expect_block  "aws ec2 terminate-instances" \
+  '{"tool_input":{"command":"aws ec2 terminate-instances --instance-ids i-0abc123"}}'
+
+expect_block  "aws ec2 delete-vpc" \
+  '{"tool_input":{"command":"aws ec2 delete-vpc --vpc-id vpc-123"}}'
+
+expect_block  "aws elb delete-load-balancer" \
+  '{"tool_input":{"command":"aws elb delete-load-balancer --load-balancer-name my-lb"}}'
+
+expect_block  "aws secretsmanager delete-secret" \
+  '{"tool_input":{"command":"aws secretsmanager delete-secret --secret-id my-secret"}}'
+
+expect_block  "aws s3 rm (object deletion)" \
+  '{"tool_input":{"command":"aws s3 rm s3://bucket/prefix/ --recursive"}}'
+
+expect_block  "aws s3 sync --delete" \
+  '{"tool_input":{"command":"aws s3 sync . s3://bucket --delete"}}'
+
+# AWS blocked even on whitelisted cluster
+expect_block  "aws iam delete-user — whitelisted cluster" \
+  '{"tool_input":{"command":"aws iam delete-user --user-name alice"}}' \
+  "CLOUD_GUARDIAN_CONFIG=$CFG_WHITELIST"
+
+expect_block  "aws ec2 terminate-instances — whitelisted cluster" \
+  '{"tool_input":{"command":"aws ec2 terminate-instances --instance-ids i-0abc123"}}' \
+  "CLOUD_GUARDIAN_CONFIG=$CFG_WHITELIST"
+
 # Tier 1 must still block even on whitelisted cluster
 expect_block  "kubectl delete pvc — whitelisted cluster" \
   '{"tool_input":{"command":"kubectl delete pvc data-vol-0"}}' \
@@ -165,6 +201,12 @@ expect_allow  "git status" \
 
 expect_allow  "aws s3 ls (read-only)" \
   '{"tool_input":{"command":"aws s3 ls s3://bucket"}}'
+
+expect_allow  "aws ec2 describe-instances (read-only)" \
+  '{"tool_input":{"command":"aws ec2 describe-instances --region us-east-1"}}'
+
+expect_allow  "aws iam list-users (read-only)" \
+  '{"tool_input":{"command":"aws iam list-users"}}'
 
 # ── Results ───────────────────────────────────────────────────────────────────
 echo ""
