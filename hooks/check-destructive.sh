@@ -26,6 +26,19 @@ INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
 [[ -z "$COMMAND" ]] && exit 0
 
+# ── False-positive guard ───────────────────────────────────────────────────────
+# git/gh commands (commit, push, pr create, etc.) cannot execute cloud operations
+# directly. Their arguments (commit messages, PR bodies, heredocs) may legitimately
+# contain dangerous command text for documentation purposes.
+# Skip all pattern checks if:
+#   - the command starts with git or gh, AND
+#   - there are no compound operators (&& || ; |) that could chain a real command
+# Compound commands like "git status && kubectl delete pvc" are still caught.
+if echo "$COMMAND" | grep -qE '^\s*(git|gh)\s' && \
+   ! echo "$COMMAND" | grep -qE '&&|\|\|[^|]|[^|]\|[^|]|;'; then
+  exit 0
+fi
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 # Compute command hash (16-char, stable across retries for identical commands)
