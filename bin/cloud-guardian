@@ -132,6 +132,10 @@ case "$cmd" in
     esac
     ;;
 
+  audit)
+    exec "$(dirname "$0")/cloud-guardian-audit" "${@:2}"
+    ;;
+
   help|--help|-h)
     cat << 'HELP'
 cloud-guardian — management CLI
@@ -141,8 +145,10 @@ Commands:
   whitelist list                   List whitelisted clusters
   whitelist add <context>          Add cluster to whitelist (requires confirmation)
   whitelist remove <context>       Remove cluster from whitelist
+  audit [tail|blocked|stats|clear] View audit log
 
 Config file: ~/.config/cloud-guardian/config.json
+Audit log  : ~/.local/share/cloud-guardian/audit.log
 HELP
     ;;
 

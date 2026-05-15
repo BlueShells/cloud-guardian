@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# cloud-guardian-audit: view and manage the cloud-guardian audit log
+#
+# Usage:
+#   cloud-guardian-audit [tail|blocked|approved|executed|clear]
+#   cloud-guardian-audit          # show last 50 entries
+#   cloud-guardian-audit tail     # live stream
+#   cloud-guardian-audit blocked  # show only BLOCKED entries
+#   cloud-guardian-audit stats    # summary counts
+
+set -euo pipefail
+
+AUDIT_LOG="${CLOUD_GUARDIAN_AUDIT_LOG:-$HOME/.local/share/cloud-guardian/audit.log}"
+
+if [[ ! -f "$AUDIT_LOG" ]]; then
+  echo "No audit log found at: $AUDIT_LOG"
+  echo "Audit log is created automatically when cloud-guardian blocks or allows commands."
+  exit 0
+fi
+
+cmd="${1:-last}"
+
+case "$cmd" in
+  tail)
+    echo "Streaming audit log (Ctrl+C to stop)..."
+    tail -f "$AUDIT_LOG"
+    ;;
+  blocked)
+    grep " BLOCKED  " "$AUDIT_LOG" || echo "(no BLOCKED entries)"
+    ;;
+  approved)
+    grep " APPROVED " "$AUDIT_LOG" 2>/dev/null || grep "APPROVED" "$AUDIT_LOG" || echo "(no APPROVED entries)"
+    ;;
+  executed)
+    grep " EXECUTED " "$AUDIT_LOG" || echo "(no EXECUTED entries)"
+    ;;
+  stats)
+    echo "cloud-guardian audit statistics"
+    echo "─────────────────────────────────────────"
+    echo "Log file : $AUDIT_LOG"
+    echo "Size     : $(wc -l < "$AUDIT_LOG") lines"
+    echo ""
+    echo "BLOCKED  : $(grep -c ' BLOCKED  ' "$AUDIT_LOG" || echo 0)"
+    echo "EXECUTED : $(grep -c ' EXECUTED ' "$AUDIT_LOG" || echo 0)"
+    echo "ALLOWED  : (only cloud ops are logged)"
+    echo ""
+    echo "Top blocked contexts:"
+    grep ' BLOCKED  ' "$AUDIT_LOG" | awk '{print $4}' | sort | uniq -c | sort -rn | head -5 | sed 's/^/  /'
+    ;;
+  clear)
+    read -rp "Clear audit log? This cannot be undone. Type YES to confirm: " ans
+    [[ "$ans" == "YES" ]] || { echo "Cancelled."; exit 1; }
+    > "$AUDIT_LOG"
+    echo "Audit log cleared."
+    ;;
+  last|*)
+    echo "Last 50 audit entries (${AUDIT_LOG}):"
+    echo "─────────────────────────────────────────"
+    tail -50 "$AUDIT_LOG"
+    ;;
+esac
