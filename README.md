@@ -80,7 +80,7 @@ Add to `~/.claude/settings.json`:
     "cloud-guardian": {
       "source": {
         "source": "github",
-        "repo": "YOUR_USERNAME/cloud-guardian"
+        "repo": "BlueShells/cloud-guardian"
       }
     }
   },
@@ -110,7 +110,7 @@ After plugin cache is downloaded, add the hook (path varies by version):
 ### From source (local)
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/cloud-guardian
+git clone https://github.com/BlueShells/cloud-guardian
 cd cloud-guardian
 bash setup/install.sh
 ```
