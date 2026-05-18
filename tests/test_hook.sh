@@ -56,6 +56,23 @@ EOF
 CFG_WHITELIST=$(mktemp)
 echo '{"whitelistedClusters":["qa4-mantle-eks"]}' > "$CFG_WHITELIST"
 
+# Fake kubeconfig for whitelisted context tests (independent of machine context)
+TMPKUBE_QA4=$(mktemp)
+cat > "$TMPKUBE_QA4" << 'EOF'
+apiVersion: v1
+kind: Config
+current-context: qa4-mantle-eks
+contexts:
+- context: {cluster: c, user: u}
+  name: qa4-mantle-eks
+clusters:
+- cluster: {server: "https://fake"}
+  name: c
+users:
+- name: u
+  user: {}
+EOF
+
 # ── Tier 1: always blocked ────────────────────────────────────────────────────
 echo ""
 echo "── Tier 1 (always blocked, even on whitelisted clusters) ───────────────"
@@ -193,11 +210,11 @@ echo "── Tier 2 allowed on whitelisted cluster ─────────�
 
 expect_allow  "kubectl get pods — whitelisted" \
   '{"tool_input":{"command":"kubectl get pods -n test"}}' \
-  "CLOUD_GUARDIAN_CONFIG=$CFG_WHITELIST"
+  "CLOUD_GUARDIAN_CONFIG=$CFG_WHITELIST" "KUBECONFIG=$TMPKUBE_QA4"
 
 expect_allow  "helm list — whitelisted" \
   '{"tool_input":{"command":"helm list -n test"}}' \
-  "CLOUD_GUARDIAN_CONFIG=$CFG_WHITELIST"
+  "CLOUD_GUARDIAN_CONFIG=$CFG_WHITELIST" "KUBECONFIG=$TMPKUBE_QA4"
 
 # ── Token flow ────────────────────────────────────────────────────────────────
 echo ""

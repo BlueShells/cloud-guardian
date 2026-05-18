@@ -35,10 +35,35 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || tr
 # ── False-positive guard ──────────────────────────────────────────────────────
 # git/gh commands cannot execute cloud operations directly. Their arguments
 # (commit messages, PR bodies, heredocs) may reference dangerous commands
-# for documentation. Skip all checks unless compound operators are present.
-if echo "$COMMAND" | grep -qE '^\s*(git|gh)\s' && \
-   ! echo "$COMMAND" | grep -qE '&&|\|\|[^|]|[^|]\|[^|]|;'; then
-  exit 0
+# for documentation purposes.
+#
+# Cases handled:
+#   1. Pure git/gh command (no compound operator) → skip entirely
+#   2. git/gh command chained with && or ; (e.g. git add && git commit)
+#      → only the non-git parts need checking, but if ALL parts start with
+#        git/gh, the whole command is safe to skip.
+_all_parts_are_git() {
+  # Split on &&, ||, ; and check each segment starts with git or gh
+  local cmd="$1"
+  # Replace operators with newlines, strip leading spaces, check each part
+  echo "$cmd" | tr ';&|' '\n' | while IFS= read -r part; do
+    part="${part#"${part%%[! ]*}"}"  # ltrim
+    [[ -z "$part" ]] && continue
+    echo "$part" | grep -qE '^(git|gh)\s' || { echo "non-git"; return; }
+  done
+}
+
+if echo "$COMMAND" | grep -qE '^\s*(git|gh)\s'; then
+  if ! echo "$COMMAND" | grep -qE '&&|\|\|[^|]|[^|]\|[^|]|;'; then
+    # Simple git/gh command, no chaining → skip
+    exit 0
+  fi
+  # Chained command — skip only if every segment is git/gh
+  # (e.g. "git add X && git commit -m '...kubectl...'" is safe)
+  if ! _all_parts_are_git "$COMMAND" | grep -q "non-git"; then
+    exit 0
+  fi
+  # At least one non-git segment exists → fall through to pattern checks
 fi
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
