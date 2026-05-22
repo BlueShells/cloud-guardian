@@ -108,28 +108,23 @@ _audit() {
 
 block() {
   local tier="$1" risk="$2"
-  _audit "BLOCKED" "$tier" "$risk"
+  _audit "REVIEW_REQUIRED" "$tier" "$risk"
   jq -n \
     --arg tier "$tier" --arg ctx "$KUBECTL_CONTEXT" \
     --arg cmd  "$(printf '%s' "$COMMAND" | head -c 200)" \
-    --arg risk "$risk" --arg hash "$CMD_HASH" \
+    --arg risk "$risk" \
     '{
-      "continue": false,
       "hookSpecificOutput": {
         "hookEventName": "PreToolUse",
-        "permissionDecision": "deny",
-        "permissionDecisionReason": ("[cloud-guardian] \($tier) | \($risk) | run `cloud-guardian-approve \($hash)` after user confirms")
+        "permissionDecision": "ask",
+        "permissionDecisionReason": ("[cloud-guardian] \($tier) | ctx=\($ctx) | \($risk)")
       },
       "stopReason": (
-        "🚨 [cloud-guardian] \($tier)\n" +
+        "⚠️  [cloud-guardian] \($tier)\n" +
         "  Context : \($ctx)\n" +
         "  Command : \($cmd)\n" +
-        "  Risk    : \($risk)\n" +
-        "  Hash    : \($hash)\n\n" +
-        "To proceed:\n" +
-        "  1. Explain to the user exactly what will change and the risk\n" +
-        "  2. Only if user explicitly says YES: run `cloud-guardian-approve \($hash)`\n" +
-        "  3. Immediately retry the original command"
+        "  Risk    : \($risk)\n\n" +
+        "请向用户说明此操作的影响，等待用户在权限弹窗中确认。"
       )
     }'
   exit 0
