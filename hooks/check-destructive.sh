@@ -32,6 +32,28 @@ INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
 [[ -z "$COMMAND" ]] && exit 0
 
+# ── Read-only kubectl guard ───────────────────────────────────────────────────
+# Read-only kubectl subcommands are safe on any cluster — allow through without
+# confirmation even on non-whitelisted production clusters.
+# Write/exec operations (apply, delete, scale, patch, edit, exec, cp, ...) still
+# go through the full Tier 1 / Tier 2 checks below.
+_is_readonly_kubectl() {
+  local cmd="$1"
+  # Must contain kubectl followed by a read-only subcommand
+  echo "$cmd" | grep -qE \
+    '(^|[[:space:]])(kubectl)[[:space:]]+(logs|get|describe|top|explain|version|cluster-info|api-resources|api-versions|diff|rollout[[:space:]]+status|auth[[:space:]]+can-i|config[[:space:]]+(get|view|current-context|get-contexts|use-context))\b'
+}
+
+if echo "$COMMAND" | grep -qE '(^|[[:space:]])(kubectl)[[:space:]]'; then
+  # Only skip if EVERY kubectl call in the command is read-only
+  # (avoid bypassing "kubectl get pods && kubectl delete pod" type chains)
+  if _is_readonly_kubectl "$COMMAND" && \
+     ! echo "$COMMAND" | grep -qiE \
+       '(^|[[:space:]])(kubectl)[[:space:]]+(apply|delete|scale|patch|edit|replace|create|annotate|label|taint|drain|cordon|uncordon|exec|cp|port-forward|run|expose|set|rollout[[:space:]]+(restart|undo|pause|resume)|certificate[[:space:]]+approve)\b'; then
+    exit 0
+  fi
+fi
+
 # ── False-positive guard ──────────────────────────────────────────────────────
 # git/gh commands cannot execute cloud operations directly. Their arguments
 # (commit messages, PR bodies, heredocs) may reference dangerous commands
